@@ -1,13 +1,19 @@
-﻿using UnityEngine;
+﻿#define MY_DEBUG
+
+using UnityEngine;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+
 
 public class Maze{
 
-	//迷路生成クラス
-	class MazeField{
+
+	class MazeGenerator{
+
+		int roomCol,roomRaw;
 
 		int[,] room;	//int = cluster number
 
@@ -22,31 +28,44 @@ public class Maze{
 			public int rawPos{get;private set;}
 			public Wall(Type type, int col, int raw){this.type=type;colPos=col;rawPos=raw;}
 		}
-		List<Wall> uncheckedWall = new List<Wall>();
+		List<Wall> uncheckedWall;
+
+		public bool[,] generatedData{get; private set;}
 
 		/// <summary>
-		/// height,width ともに壁の厚さを無視した場合の値であることに注意
+		/// height,width ともに奇数でなければならない
 		/// </summary>
-		public	MazeField(int height, int width){
-			room = new int[height,width];
-			for(int h=0; h<height; h++){
-				for(int w=0; w<width; w++)
-					room[h,w]=h*width+w;
+		public	MazeGenerator(int height, int width){
+			if(width%2!=1 || height%2!=1){
+				Debug.LogError("Height and width must be odd number!");
+			}
+			generatedData = new bool[height,width];
+
+			roomCol=(height+1)/2;
+			roomRaw=(width+1)/2;
+			room = new int[roomCol,roomRaw];
+			for(int h=0; h<roomCol; h++){
+				for(int w=0; w<roomRaw; w++)
+					room[h,w]=h*roomRaw+w;
 			}
 
-			VerticalWall = new WallState[height,width-1];
-			for(int h=0; h<height; h++){
-				for(int w=0; w<width-1; w++)
+			uncheckedWall = new List<Wall>();
+			VerticalWall = new WallState[roomCol,roomRaw-1];
+			for(int h=0; h<roomCol; h++){
+				for(int w=0; w<roomRaw-1; w++)
 					uncheckedWall.Add(new Wall(Wall.Type.VERTICAL,h,w));
 			}
-			HorizontalWall = new WallState[height-1,width];
-			for(int h=0; h<height-1; h++){
-				for(int w=0; w<width; w++)
+			HorizontalWall = new WallState[roomCol-1,roomRaw];
+			for(int h=0; h<roomCol-1; h++){
+				for(int w=0; w<roomRaw; w++)
 					uncheckedWall.Add(new Wall(Wall.Type.HOLIZONTAL,h,w));
 			}
 
 			//シャッフルする
 			uncheckedWall = uncheckedWall.OrderBy(i => Guid.NewGuid()).ToList();
+
+			ClusterMethod();
+			GetMazeData();
 		}
 
 		//クラスター法による迷路生成
@@ -92,27 +111,10 @@ public class Maze{
 		/// true=wall, false=path
 		/// </summary>
 		/// <returns>The maze.</returns>
-		public bool[,] CreateMaze(){
-			ClusterMethod();
-
-			string s="";
-			foreach(var val in room){
-				s+=val.ToString()+",";
-			}
-			Debug.Log(s);
-			s="";
-			foreach(var val in VerticalWall){
-				s+=((int)val).ToString()+",";
-			}
-			Debug.Log(s);
-			s="";
-			foreach(var val in HorizontalWall){
-				s+=((int)val).ToString()+",";
-			}
-			Debug.Log(s);
-
+		void GetMazeData(){
+			#if MY_DEBUG
 			foreach (var cluster in room) {
-				if (cluster!=0)
+				if (cluster!=room[0,0])
 					Debug.LogError("room error");
 			}
 			foreach (var state in VerticalWall) {
@@ -123,240 +125,295 @@ public class Maze{
 				if (state==WallState.UNCHECKED)
 					Debug.LogError("horizontal wall error");
 			}
-
-			bool[,] createdMaze = new bool[room.GetLength(0)*2-1,room.GetLength(1)*2-1];
-			for(int i=0; i<createdMaze.GetLength(0); i++){
-				for(int j=0; j<createdMaze.GetLength(1); j++){
+			#endif
+			for(int i=0; i<generatedData.GetLength(0); i++){
+				for(int j=0; j<generatedData.GetLength(1); j++){
 					if(i%2==0 && j%2==0){ 
-						createdMaze[i,j]=false;
+						generatedData[i,j]=false;
 					}else if(i%2==1 && j%2==1){
-						createdMaze[i,j]=true;
+						generatedData[i,j]=true;
 					}else if(i%2==0 && j%2==1){
-						createdMaze[i,j]=VerticalWall[i/2,(j-1)/2]==WallState.STAND;
+						generatedData[i,j]=VerticalWall[i/2,(j-1)/2]==WallState.STAND;
 					}else if(i%2==1 && j%2==0){
-						createdMaze[i,j]=HorizontalWall[(i-1)/2,j/2]==WallState.STAND;
+						generatedData[i,j]=HorizontalWall[(i-1)/2,j/2]==WallState.STAND;
 					}
 				}
 			}
 
-			return createdMaze;
 		}
 
 	}
+
 			
+	class MazeSolver{
+		public bool[,] solvedData{get; private set;}
+		public readonly Point start;
+		public readonly Point goal;
+		readonly bool[,] mazeData;
+
+
+		public MazeSolver(Point start, Point goal, bool[,] mazeData){
+			this.start=start;
+			this.goal=goal;
+			this.mazeData=mazeData;
+		}
+
+		//A*法
+		void AstarMethod(){
+		}
+
+
+
+
+		/*class AStar{
+			readonly bool[,] mazeData;				// 迷路を格納した配列
+			List<Node> openNodes;					// 未確定のノード一覧
+			Point goal;                 // ゴールの場所
+			private var dx:Array = [0, 1, 0, -1];   // X方向移動用配列
+			private var dy:Array = [1, 0, -1, 0];   // Y方向移動用配列
+			readonly int H;                      // 迷路の縦幅
+			readonly int W;                      // 迷路の横幅
+
+			// コンストラクタ
+			public AStar(Point start, Point goal, bool[,] mazeData) {
+
+				// 各マスを初期化する
+				var start:Node = null;
+				maze = [];
+				for (var yy:int = 0; yy < H; yy++) {
+					maze[yy] = [];
+					for (var xx:int = 0; xx < W; xx++) {
+						var block:Node = new Node(mazeArray[yy].charAt(xx), xx, yy);
+						addChild(block);
+						maze[yy][xx] = block;
+
+						// スタート地点を覚えておく
+						if (block.isStart) {
+							start = block;
+						}
+
+						// ゴール地点の場所を記録する
+						if (block.isGoal) {
+							goal = new Point(block.xx, block.yy);
+						}
+					}
+				}
+
+				// スタート地点のみ gs を 0 とし、open に加える
+				if (start == null) return;
+				start.gs = 0;
+				start.fs = start.gs + hs(start);
+				open.push(start);
+
+				// nextStep の定期呼び出しを開始する
+				setTimeout(nextStep, 100);
+			}
+
+			// ダイクストラ法の１ステップを実行する
+			void nextStep(){
+				// 未確定ノードの中から、スコアが最小となるノード u を決定する
+				var minScore:int = int.MAX_VALUE;
+				var minIndex:int = -1;
+				var u:Node = null;
+				for (var i:int = 0; i < open.length; i++) {
+					var block:Node = open[i] as Node;
+					if (block.done) continue;
+					if (block.fs < minScore) {
+						minScore = block.fs;
+						minIndex = i;
+						u = block;
+					}
+				}
+
+				// 未確定ノードがなかった場合は終了
+				if (u == null) {
+					return;
+				}
+
+				// ノード u を確定ノードとする
+				open.splice(minIndex, 1);
+				u.done = true;
+				u.draw();
+
+				// ゴールだった場合は終了
+				if (u.isGoal) {
+					return;
+				}
+
+				// ノード u の周りのノードのスコアを更新する
+				for (i = 0; i < dx.length; i++) {
+					// 境界チェック
+					if (u.yy + dy[i] < 0 || u.yy + dy[i] >= H || u.xx + dx[i] < 0 || u.xx + dx[i] >= W) continue;
+
+					// ノード v を取得する
+					var v:Node = maze[u.yy + dy[i]][u.xx + dx[i]] as Node;
+
+					// 確定ノードや壁だったときにはパスする
+					if (v.done || v.isWall) continue;
+
+					// 既存のスコアより小さいときのみ更新する
+					if (u.gs + 1 + hs(v) < v.fs) {
+						v.gs = u.gs + 1;
+						v.fs = v.gs + hs(v);
+						v.prev = u;
+						v.draw();
+
+						// open リストに追加
+						if (open.indexOf(v) == -1) open.push(v);
+					}
+				}
+
+				setTimeout(nextStep, 100);
+			}
+
+			// h* を計算する
+			private function hs(node:Node):Number {
+				return Math.abs(node.xx - goal.x) + Math.abs(node.yy - goal.y);
+			}
+
+
+		}
+	}
+
+	class Node{
+		public var fs:Number;           // ノードの f* の値
+		public var gs:Number;           // ノードの g* の値
+		public var done:Boolean;        // ダイクストラ法の確定ノード一覧
+		public var prev:Node;          // ダイクストラ法の直前の頂点を記録
+		public var isWall:Boolean;      // 壁かどうか
+		public var isGoal:Boolean;      // ゴール地点かどうか
+		public var isStart:Boolean;     // スタート地点かどうか
+		public var isRoute:Boolean;     // スタートからゴールへのルート上の点かどうか
+		public var xx:int;              // マスの x 方向インデックス
+		public var yy:int;              // マスの y 方向インデックス
+
+
+		// 描画する
+		public function draw():void {
+			graphics.clear();
+
+			// 確定したノードはスコアに応じた色にする
+			graphics.beginFill(isWall ? WALL : 
+				done ? new ColorHSV(fs * 10, .5).value : NORMAL);
+			graphics.drawRect(-SIZE / 2, - SIZE / 2, SIZE, SIZE);
+			graphics.endFill();
+
+			// prev ノードが存在する場合は矢印を描画する
+			if (prev) {
+				graphics.lineStyle(0, isRoute ? 0x000000 : new ColorHSV(fs * 10, 1, .8).value);
+				graphics.moveTo(SIZE * .4, 0);
+				graphics.lineTo(-SIZE * .4, 0);
+				graphics.lineTo(-SIZE * .2, SIZE * .1);
+				graphics.lineTo(-SIZE * .4, 0);
+				graphics.lineTo(-SIZE * .2, -SIZE * .1);
+				if (prev.xx < xx) rotation = 0;
+				if (prev.xx > xx) rotation = 180;
+				if (prev.yy < yy) rotation = 90;
+				if (prev.yy > yy) rotation = 270;
+			}
+
+			// ゴールが確定したときには、手前のノードを全て辿って
+			// isRoute を true にする
+			if (isGoal && done) {
+				var b:Node = prev;
+				while (b) {
+					b.isRoute = true;
+					b.draw();
+					b = b.prev;
+				}
+			}
+		}
+	}*/
+
+
+
+
+
+	}
+
 
 	public bool[,] mazeData{get; private set;}
-	public int height{get; private set;}
-	public int width{get; private set;}
+	public bool[,] solvedData{get; private set;}
+	public readonly int height;
+	public readonly int width;
+	public bool isGenerated{get; private set;}
+	public bool isSolved{get; private set;}
+
 
 	public Maze(int height=11, int width=11){
 		this.height=height;
 		this.width=width;
-		this.mazeData=new bool[height,width];
+		isGenerated = false;
+		isSolved = false;
+
+		GenerateMaze();
+		//SolveMaze();
 	}
 
-	public void Create(){
+
+	void GenerateMaze(){
 		if(width%2!=1 || height%2!=1){
 			Debug.LogError("Height and width must be odd number!");
 			return;
 		}
+		Thread thread = new Thread(()=>{
+			Timer timer = new Timer(); timer.Start();
 
-		MazeField field = new MazeField((height+1)/2,(width+1)/2);
-		mazeData = field.CreateMaze();
+			MazeGenerator MG = new MazeGenerator(height,width);
+			mazeData = MG.generatedData;
+			if(mazeData.GetLength(0)!=height || mazeData.GetLength(1)!=width)
+				Debug.LogError("Generate Maze Error!!");
+
+			timer.Stop();
+			Debug.Log("Generate Maze:"+timer.sec+"[s]");
+			isGenerated=true;
+		});
+		thread.Start();
+	}
+
+
+	void SolveMaze(Point start, Point goal){
+		Thread thread = new Thread(()=>{
+			while(!isGenerated){}
+
+			Timer timer = new Timer(); timer.Start();
+
+			MazeSolver MS = new MazeSolver(start,goal,this.mazeData);
+			solvedData = MS.solvedData;
+			if(solvedData.GetLength(0)!=height || solvedData.GetLength(1)!=width)
+				Debug.LogError("Solve Maze Error!!");
+
+			timer.Stop();
+			Debug.Log("Solve Maze:"+timer.sec+"[s]");
+			isSolved=true;
+		});
+		thread.Start();
+	}
+
+
+	class Timer{
+		System.Diagnostics.Stopwatch stopwatch;
+		public float sec{get{return stopwatch.ElapsedMilliseconds/1000f;}}
+
+		public Timer(){stopwatch = new System.Diagnostics.Stopwatch();}
+		public void Start(){stopwatch.Start();}
+		public void Stop(){stopwatch.Stop();}
+	}
+
+
+	public struct Point{
+		public int x{get; private set;}
+		public int y{get; private set;}
+		public Point(int x, int y){this.x=x;this.y=y;}
 	}
 
 
 
-//	public void GenMaze() {
-//		var id = 1;
-//		var area_arr = new Array();
-//		var tmp_wall_arr = new Array();
-//		
-//		wall_hash['x'] = new Array();
-//		wall_hash['y'] = new Array();
-//		
-//		for (var y = 0; y < y_num; y++) {
-//			area_arr[y] = new Array();
-//			wall_hash['x'][y] = new Array();
-//			wall_hash['y'][y] = new Array();
-//			
-//			for (var x = 0; x < x_num; x++) {
-//				// 壁情報配列初期化
-//				if (x > 0) {
-//				tmp_wall_arr.push({ 'type':'y', 'x':x, 'y':y });
-//				}
-//				if (y > 0) {
-//				tmp_wall_arr.push({ 'type':'x', 'x':x, 'y':y });
-//				}
-//				
-//				// 領域情報配列初期化
-//				area_arr[y][x] = id++;
-//			}
-//		}
-//		
-//		// 壁情報配列シャッフル
-//		tmp_wall_arr.shuffle();
-//		
-//		//
-//		while (tmp_wall_arr.length) {
-//			var wall_obj = tmp_wall_arr.pop();
-//			var x = wall_obj.x;
-//			var y = wall_obj.y;
-//			
-//			if (wall_obj.type == 'x') {
-//				if (area_arr[y - 1][x] != area_arr[y][x]) {
-//					var from = area_arr[y - 1][x];
-//					var to = area_arr[y][x];
-//					if (area_arr[y - 1][x] < area_arr[y][x]) {
-//						from =  area_arr[y][x];
-//						to = area_arr[y - 1][x];
-//					}
-//					
-//					for (var y = 0; y < y_num; y++) {
-//						for (var x = 0; x < x_num; x++) {
-//							if (area_arr[y][x] == from) {
-//								area_arr[y][x] = to;
-//							}
-//						}
-//					}
-//				}
-//				else {
-//					wall_arr.push(wall_obj);
-//					wall_hash['x'][y][x] = 1;
-//				}
-//			}
-//			else if (wall_obj.type == 'y') {
-//				if (area_arr[y][x - 1] != area_arr[y][x]) {
-//					var from = area_arr[y][x - 1];
-//					var to = area_arr[y][x];
-//					if (area_arr[y][x - 1] < area_arr[y][x]) {
-//						from =  area_arr[y][x];
-//						to = area_arr[y][x - 1];
-//					}
-//					
-//					for (var y = 0; y < y_num; y++) {
-//						for (var x = 0; x < x_num; x++) {
-//							if (area_arr[y][x] == from) {
-//								area_arr[y][x] = to;
-//							}
-//						}
-//					}
-//				}
-//				else {
-//					wall_arr.push(wall_obj);
-//					wall_hash['y'][y][x] = 1;
-//				}
-//			}
-//		}
-//	};
-//	
-//	
-//	//------------------------------------------------------------------------------
-//	// private: 経路探索
-//	//------------------------------------------------------------------------------
-//	pri.searchRoute = function () {
-//		var area_arr = new Array();
-//		var tmp_wall_arr = new Array();
-//		
-//		for (var y = 0; y < y_num; y++) {
-//			area_arr[y] = new Array();
-//			
-//			for (var x = 0; x < x_num; x++) {
-//				// 領域情報配列初期化
-//				area_arr[y][x] = 1;
-//			}
-//		}
-//		
-//		for (var y = 0; y < y_num; y++) {
-//			for (var x = 0; x < x_num; x++) {
-//				if (x == 0 && y == 0) {
-//					continue;
-//				}
-//				
-//				var xx = x;
-//				var yy = y;
-//				do {
-//					var open_wall_side = isClose(xx, yy, area_arr);
-//					if (open_wall_side > 0) {
-//						area_arr[yy][xx] = 0;
-//					}
-//					switch (open_wall_side) {
-//					case 1: yy--; break;
-//					case 2: xx++; break;
-//					case 3: yy++; break;
-//					case 4: xx--; break;
-//					}
-//				} while (open_wall_side > 0);
-//			}
-//		}
-//		
-//		route_arr = area_arr;
-//	};
-//	
-//	
-//	//------------------------------------------------------------------------------
-//	// private: 行き止まり判定
-//	//------------------------------------------------------------------------------
-//	pri.isClose = function (x, y, area_arr) {
-//		// 無効なエリアの場合は-1を返す
-//		if (area_arr[y][x] == 0) {
-//			return -1;
-//		}
-//		
-//		// スタート地点の場合は-1を返す
-//		if (y == 0 && x == 0) {
-//			return -1;
-//		}
-//		
-//		// ゴール地点の場合は-1を返す
-//		if (y == y_num - 1 && x == x_num - 1) {
-//			return -1;
-//		}
-//		
-//		arround_wall_num = 0;
-//		open_wall_side = 0;
-//		
-//		// 上
-//		if (y == 0 || (y > 0 && wall_hash['x'][y][x] == 1) || area_arr[y - 1][x] == 0) {
-//			arround_wall_num++;
-//		}
-//		else {
-//			open_wall_side = 1;
-//		}
-//		
-//		// 下
-//		if (y == y_num - 1 || (y < y_num - 1 && wall_hash['x'][y + 1][x] == 1) 
-//		    || area_arr[y + 1][x] == 0) {
-//			arround_wall_num++;
-//		}
-//		else {
-//			open_wall_side = 3;
-//		}
-//		
-//		// 左
-//		if (x == 0 || (x > 0 && wall_hash['y'][y][x] == 1) || area_arr[y][x - 1] == 0) {
-//			arround_wall_num++;
-//		}
-//		else {
-//			open_wall_side = 4;
-//		}
-//		
-//		// 右
-//		if (x == x_num - 1 || (x < x_num - 1 && wall_hash['y'][y][x + 1] == 1)
-//		    || area_arr[y][x + 1] == 0) {
-//			arround_wall_num++;
-//		}
-//		else {
-//			open_wall_side = 2;
-//		}
-//		
-//		if (arround_wall_num == 3) {
-//			return open_wall_side;
-//		}
-//		
-//		return 0;
-//	}
-//}}}
 
+
+//	void OnApplicationQuit(){
+//		thread.Abort ();
+//		thread.Join ();
+//	}
 
 }

@@ -13,6 +13,8 @@ public class MazeManager : MonoBehaviour {
 	[SerializeField]
 	int width;
 
+	public int invokeStep = 1000;
+
 	Maze maze;
 	public GameObject wallBlock;
 	public GameObject floorBlock;
@@ -45,31 +47,32 @@ public class MazeManager : MonoBehaviour {
 		if(height%2!=0&&width%2!=0){
 			Debug.Log("generate maze");
 			maze = new Maze(width,height);
-			maze.Create();
-			StartCoroutine(CreateMaze(maze.mazeData));
+			StartCoroutine(CreateMaze(maze));
 		}
 	}
 
-	IEnumerator	 CreateMaze(bool[,] data){
-		int height = data.GetLength(0);
-		int width = data.GetLength(1);
+	IEnumerator	 CreateMaze(Maze maze){
+		while(!maze.isGenerated){yield return null;}
+		bool[,] data = maze.mazeData;
+		int mazeHeight = data.GetLength(0);
+		int mazeWidth = data.GetLength(1);
 
-		for(int i=-1; i<height+1; i++){
-			for(int j=-1; j<width+1; j++){
+		int count =0;
+		for(int i=-1; i<mazeHeight+1; i++){
+			for(int j=-1; j<mazeWidth+1; j++){
 				((GameObject)Instantiate(floorBlock, new Vector3(i,-1,j), Quaternion.identity)).transform.SetParent(mazeParent);
-				yield return null;
-				if(i==-1||i==height||j==-1||j==width){
+				if(i==-1||i==mazeHeight||j==-1||j==mazeWidth){
 					((GameObject)Instantiate(wallBlock, new Vector3(i,0,j), Quaternion.identity)).transform.SetParent(mazeParent);
-					yield return null;
 				}
+				if(++count>invokeStep){count=0;yield return null;}
 			}
 		}
 
-		for(int i=0; i<height; i++){
-			for(int j=0; j<width; j++){
+		for(int i=0; i<mazeHeight; i++){
+			for(int j=0; j<mazeWidth; j++){
 				if(data[i,j]){
 					((GameObject)Instantiate(wallBlock, new Vector3(i,0,j), Quaternion.identity)).transform.SetParent(mazeParent);
-					yield return null;
+					if(++count>invokeStep){count=0;yield return null;}
 				}
 			}
 		}
