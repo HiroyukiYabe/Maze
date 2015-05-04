@@ -1,4 +1,4 @@
-﻿#define MY_DEBUG
+﻿//#define MY_DEBUG
 
 using UnityEngine;
 using System;
@@ -10,11 +10,10 @@ using System.Threading;
 
 public class Maze{
 
-
+	//迷路生成用クラス
 	class MazeGenerator{
 
 		int roomCol,roomRaw;
-
 		int[,] room;	//int = cluster number
 
 		enum WallState{UNCHECKED, STAND, BROKEN}
@@ -30,7 +29,17 @@ public class Maze{
 		}
 		List<Wall> uncheckedWall;
 
+		int height,width;
+		/// <summary>
+		/// 外周なしの迷路. trueが壁、falseが通路
+		/// </summary>
+		/// <value>The generated data.</value>
 		public bool[,] generatedData{get; private set;}
+		/// <summary>
+		/// 外周ありの迷路. trueが壁、falseが通路
+		/// </summary>
+		/// <value>The generated data with wall.</value>
+		public bool[,] generatedDataWithWall{get; private set;}
 
 		/// <summary>
 		/// height,width ともに奇数でなければならない
@@ -39,7 +48,8 @@ public class Maze{
 			if(width%2!=1 || height%2!=1){
 				Debug.LogError("Height and width must be odd number!");
 			}
-			generatedData = new bool[height,width];
+			this.height=height;
+			this.width=width;
 
 			roomCol=(height+1)/2;
 			roomRaw=(width+1)/2;
@@ -49,23 +59,25 @@ public class Maze{
 					room[h,w]=h*roomRaw+w;
 			}
 
-			uncheckedWall = new List<Wall>();
 			VerticalWall = new WallState[roomCol,roomRaw-1];
+			HorizontalWall = new WallState[roomCol-1,roomRaw];
+
+			uncheckedWall = new List<Wall>();
 			for(int h=0; h<roomCol; h++){
 				for(int w=0; w<roomRaw-1; w++)
 					uncheckedWall.Add(new Wall(Wall.Type.VERTICAL,h,w));
 			}
-			HorizontalWall = new WallState[roomCol-1,roomRaw];
 			for(int h=0; h<roomCol-1; h++){
 				for(int w=0; w<roomRaw; w++)
 					uncheckedWall.Add(new Wall(Wall.Type.HOLIZONTAL,h,w));
 			}
-
 			//シャッフルする
 			uncheckedWall = uncheckedWall.OrderBy(i => Guid.NewGuid()).ToList();
 
 			ClusterMethod();
 			GetMazeData();
+			ConvertMazeWithWall();
+			//GetMazeWithWall();
 		}
 
 		//クラスター法による迷路生成
@@ -126,8 +138,10 @@ public class Maze{
 					Debug.LogError("horizontal wall error");
 			}
 			#endif
-			for(int i=0; i<generatedData.GetLength(0); i++){
-				for(int j=0; j<generatedData.GetLength(1); j++){
+
+			generatedData = new bool[height,width];
+			for(int i=0; i<height; i++){
+				for(int j=0; j<width; j++){
 					if(i%2==0 && j%2==0){ 
 						generatedData[i,j]=false;
 					}else if(i%2==1 && j%2==1){
@@ -142,82 +156,160 @@ public class Maze{
 
 		}
 
-	}
-
-			
-	class MazeSolver{
-		public bool[,] solvedData{get; private set;}
-		public readonly Point start;
-		public readonly Point goal;
-		readonly bool[,] mazeData;
-
-
-		public MazeSolver(Point start, Point goal, bool[,] mazeData){
-			this.start=start;
-			this.goal=goal;
-			this.mazeData=mazeData;
+		void ConvertMazeWithWall(){
+			generatedDataWithWall = new bool[height+2,width+2];
+			for(int i=0; i<generatedDataWithWall.GetLength(0); i++){
+				for(int j=0; j<generatedDataWithWall.GetLength(1); j++){
+					if(i==0||i==generatedDataWithWall.GetLength(0)-1||j==0||j==generatedDataWithWall.GetLength(1)-1)
+						generatedDataWithWall[i,j]=true;
+					else
+						generatedDataWithWall[i,j]=generatedData[i-1,j-1];
+				}
+			}
 		}
 
-		//A*法
-		void AstarMethod(){
-		}
-
-
-
-
-		/*class AStar{
-			readonly bool[,] mazeData;				// 迷路を格納した配列
-			List<Node> openNodes;					// 未確定のノード一覧
-			Point goal;                 // ゴールの場所
-			private var dx:Array = [0, 1, 0, -1];   // X方向移動用配列
-			private var dy:Array = [1, 0, -1, 0];   // Y方向移動用配列
-			readonly int H;                      // 迷路の縦幅
-			readonly int W;                      // 迷路の横幅
-
-			// コンストラクタ
-			public AStar(Point start, Point goal, bool[,] mazeData) {
-
-				// 各マスを初期化する
-				var start:Node = null;
-				maze = [];
-				for (var yy:int = 0; yy < H; yy++) {
-					maze[yy] = [];
-					for (var xx:int = 0; xx < W; xx++) {
-						var block:Node = new Node(mazeArray[yy].charAt(xx), xx, yy);
-						addChild(block);
-						maze[yy][xx] = block;
-
-						// スタート地点を覚えておく
-						if (block.isStart) {
-							start = block;
-						}
-
-						// ゴール地点の場所を記録する
-						if (block.isGoal) {
-							goal = new Point(block.xx, block.yy);
+		void GetMazeWithWall(){
+			generatedDataWithWall = new bool[height+2,width+2];
+			for(int i=0; i<generatedDataWithWall.GetLength(0); i++){
+				for(int j=0; j<generatedDataWithWall.GetLength(1); j++){
+					if(i==0||i==generatedDataWithWall.GetLength(0)-1||j==0||j==generatedDataWithWall.GetLength(1)-1)
+						generatedDataWithWall[i,j]=true;
+					else{
+						int k=i-1;int l=j-1;
+						if(k%2==0 && l%2==0){ 
+							generatedDataWithWall[i,j]=false;
+						}else if(k%2==1 && l%2==1){
+							generatedDataWithWall[i,j]=true;
+						}else if(k%2==0 && l%2==1){
+							generatedDataWithWall[i,j]=VerticalWall[k/2,(l-1)/2]==WallState.STAND;
+						}else if(k%2==1 && l%2==0){
+							generatedDataWithWall[i,j]=HorizontalWall[(k-1)/2,l/2]==WallState.STAND;
 						}
 					}
 				}
+			}
+		}
 
-				// スタート地点のみ gs を 0 とし、open に加える
-				if (start == null) return;
-				start.gs = 0;
-				start.fs = start.gs + hs(start);
-				open.push(start);
+	}
+		
 
-				// nextStep の定期呼び出しを開始する
-				setTimeout(nextStep, 100);
+
+	//迷路のルート解析用クラス
+	class MazeSolver{
+		/// <summary>
+		/// 正解ルートを格納する配列. ルートはtrue、他はfalse
+		/// </summary>
+		/// <value>The route data.</value>
+		public bool[,] routeData{get; private set;}
+		/// <summary>
+		/// 正解ルートの長さ. 失敗時-1
+		/// </summary>
+		/// <value>The length of the route.</value>
+		public int routeLength{get; private set;}
+
+
+		public MazeSolver(Point start, Point goal, bool[,] mazeData, bool useDijkstra=false){
+			ASter aster = useDijkstra ? new Dijkstra(start,goal,mazeData) : new ASter(start,goal,mazeData);
+			this.routeData = aster.routeData;
+			this.routeLength = aster.routeLenght;
+		}
+			
+
+
+		//A*法を計算するクラス
+		class ASter{
+
+			protected class Node{
+				public int fs;           // ノードの f* の値
+				public int gs;           // ノードの g* の値
+				public bool done;        // ダイクストラ法の確定ノード一覧
+				public Node prev;          // ダイクストラ法の直前の頂点を記録
+				public bool isWall;      // 壁かどうか
+				//public bool isGoal;      // ゴール地点かどうか
+				//public bool isStart;     // スタート地点かどうか
+				public bool isRoute;     // スタートからゴールへのルート上の点かどうか
+				public Point pos;              // マスの 位置
+
+				public Node(Point pos,bool isWall){
+					this.pos=pos;
+					this.isWall=isWall;
+					fs=int.MaxValue;
+					gs=int.MaxValue;
+					prev=null;
+					isRoute=false;
+				}
+			}
+			Node[,] mazeNodes;				// 迷路を格納した配列
+			List<Node> openNodes = new List<Node>();					// 探索中のノード一覧
+			Node goalNode;                 // ゴールの場所
+			Point goalPos;					//ゴールの位置
+			readonly int H;                      // 迷路の縦幅
+			readonly int W;                      // 迷路の横幅
+			Point[] nearPoint = {Point.up,Point.down,Point.right,Point.left};
+
+			/// <summary>
+			/// 正解ルートを格納する配列. ルートはtrue、他はfalse
+			/// </summary>
+			/// <value>The route data.</value>
+			public bool[,] routeData{get; private set;}
+			/// <summary>
+			/// 
+			/// </summary>
+			/// <value>The distance data.</value>
+			//public int[,] distanceData{get; private set;}
+			public int routeLenght{get{return goalNode==null ? -1 : goalNode.gs;}}
+
+
+			public ASter(Point start, Point goal, bool[,] mazeData) {
+				if(mazeData[start.x,start.y] || mazeData[goal.x,goal.y]){
+					Debug.LogError("Start or Goal is a wall!!");
+					return;
+				}
+					
+				this.H = mazeData.GetLength(0);
+				this.W = mazeData.GetLength(1);
+				mazeNodes = new Node[H,W];
+				for(int i=0; i<H; i++){
+					for (int j=0; j<W; j++) {
+						mazeNodes[i,j] = new Node(new Point(i,j),mazeData[i,j]);
+					}
+				}
+				//this.goalNode=mazeNodes[goal.x,goal.y];
+				this.goalPos=goal;
+
+				// スタート地点のみ gs を 0 とし、openNodes に加える
+				Node startNode = mazeNodes[start.x,start.y];
+				startNode.gs = 0;
+				startNode.fs = startNode.gs + hs(startNode);
+				openNodes.Add(startNode);
+
+				// nextStep の呼び出しを開始する
+				nextStep();
+				if(goalNode==null){Debug.LogError("Solving maze failed");	return;}
+
+				//結果処理
+				this.routeData = new bool[H,W];
+				Node tmp = this.goalNode;
+				tmp.isRoute = true;
+				routeData[tmp.pos.x,tmp.pos.y]=true;
+				while(tmp.prev!=null){
+					tmp=tmp.prev;
+					tmp.isRoute=true;
+					routeData[tmp.pos.x,tmp.pos.y]=true;
+				}
+
 			}
 
 			// ダイクストラ法の１ステップを実行する
 			void nextStep(){
 				// 未確定ノードの中から、スコアが最小となるノード u を決定する
-				var minScore:int = int.MAX_VALUE;
-				var minIndex:int = -1;
-				var u:Node = null;
-				for (var i:int = 0; i < open.length; i++) {
-					var block:Node = open[i] as Node;
-					if (block.done) continue;
+				int minScore = int.MaxValue;
+				int minIndex = -1;
+				Node u = null;
+				for (int i = 0; i < openNodes.Count; i++) {
+					Node block = openNodes[i];
+					//未確定ノードの中に確定ノードがある？
+					if (block.done){Debug.LogWarning("確定ノード再チェック"); continue;}
 					if (block.fs < minScore) {
 						minScore = block.fs;
 						minIndex = i;
@@ -231,137 +323,137 @@ public class Maze{
 				}
 
 				// ノード u を確定ノードとする
-				open.splice(minIndex, 1);
+				openNodes.RemoveAt(minIndex);
 				u.done = true;
-				u.draw();
 
 				// ゴールだった場合は終了
-				if (u.isGoal) {
+				if (u.pos.Equals(goalPos)) {
+					goalNode = u;
 					return;
 				}
 
 				// ノード u の周りのノードのスコアを更新する
-				for (i = 0; i < dx.length; i++) {
+				for(int i=0; i<nearPoint.Length; i++){
+					Point next = u.pos + nearPoint[i];
 					// 境界チェック
-					if (u.yy + dy[i] < 0 || u.yy + dy[i] >= H || u.xx + dx[i] < 0 || u.xx + dx[i] >= W) continue;
-
+					if (next.x<0 || next.x>=H || next.y<0 || next.y>=W) continue;
 					// ノード v を取得する
-					var v:Node = maze[u.yy + dy[i]][u.xx + dx[i]] as Node;
+					Node v = mazeNodes[next.x,next.y];
 
 					// 確定ノードや壁だったときにはパスする
-					if (v.done || v.isWall) continue;
+					//確定ノードのスコア更新はないか？
+					if (v.done || v.isWall) {
+						if(v.done && u.gs + 1 + hs(v) < v.fs)	Debug.LogWarning("確定ノードのスコア更新");
+						continue;
+					}
 
 					// 既存のスコアより小さいときのみ更新する
 					if (u.gs + 1 + hs(v) < v.fs) {
 						v.gs = u.gs + 1;
 						v.fs = v.gs + hs(v);
 						v.prev = u;
-						v.draw();
-
 						// open リストに追加
-						if (open.indexOf(v) == -1) open.push(v);
+						if (!openNodes.Contains(v)) openNodes.Add(v);
 					}
 				}
 
-				setTimeout(nextStep, 100);
+				nextStep();
 			}
 
-			// h* を計算する
-			private function hs(node:Node):Number {
-				return Math.abs(node.xx - goal.x) + Math.abs(node.yy - goal.y);
+	
+			// h* を計算する ここではGoalとのマンハッタン距離
+			protected virtual int hs(Node node){
+				return Math.Abs(node.pos.x-goalPos.x)+Math.Abs(node.pos.y-goalPos.y);
 			}
-
 
 		}
-	}
+			
 
-	class Node{
-		public var fs:Number;           // ノードの f* の値
-		public var gs:Number;           // ノードの g* の値
-		public var done:Boolean;        // ダイクストラ法の確定ノード一覧
-		public var prev:Node;          // ダイクストラ法の直前の頂点を記録
-		public var isWall:Boolean;      // 壁かどうか
-		public var isGoal:Boolean;      // ゴール地点かどうか
-		public var isStart:Boolean;     // スタート地点かどうか
-		public var isRoute:Boolean;     // スタートからゴールへのルート上の点かどうか
-		public var xx:int;              // マスの x 方向インデックス
-		public var yy:int;              // マスの y 方向インデックス
-
-
-		// 描画する
-		public function draw():void {
-			graphics.clear();
-
-			// 確定したノードはスコアに応じた色にする
-			graphics.beginFill(isWall ? WALL : 
-				done ? new ColorHSV(fs * 10, .5).value : NORMAL);
-			graphics.drawRect(-SIZE / 2, - SIZE / 2, SIZE, SIZE);
-			graphics.endFill();
-
-			// prev ノードが存在する場合は矢印を描画する
-			if (prev) {
-				graphics.lineStyle(0, isRoute ? 0x000000 : new ColorHSV(fs * 10, 1, .8).value);
-				graphics.moveTo(SIZE * .4, 0);
-				graphics.lineTo(-SIZE * .4, 0);
-				graphics.lineTo(-SIZE * .2, SIZE * .1);
-				graphics.lineTo(-SIZE * .4, 0);
-				graphics.lineTo(-SIZE * .2, -SIZE * .1);
-				if (prev.xx < xx) rotation = 0;
-				if (prev.xx > xx) rotation = 180;
-				if (prev.yy < yy) rotation = 90;
-				if (prev.yy > yy) rotation = 270;
-			}
-
-			// ゴールが確定したときには、手前のノードを全て辿って
-			// isRoute を true にする
-			if (isGoal && done) {
-				var b:Node = prev;
-				while (b) {
-					b.isRoute = true;
-					b.draw();
-					b = b.prev;
-				}
+		//ダイクストラ法を計算するクラス
+		class Dijkstra :ASter{
+			public Dijkstra(Point start, Point goal, bool[,] mazeData) : base(start, goal, mazeData){}
+			//ダイクストラ法ではh*は常に0
+			protected override int hs (Node node)
+			{
+				return 0;
 			}
 		}
-	}*/
+			
 
-
-
-
+//		class RouteNode{
+//			public int lengthFromStart;
+//			public Vector2 nextDir;
+//			public bool isCorrentRoute;
+//			public RouteNode(){lengthFromStart=-1;nextDir=Vector2.zero;isCorrentRoute=false;}
+//			public RouteNode(int lengthFromStart, Vector2 nextdir, bool isCorrectRoute=false){
+//				this.lengthFromStart=lengthFromStart;
+//				this.nextDir=nextDir;
+//				this.isCorrentRoute=isCorrectRoute;
+//			}
+//		}
 
 	}
 
 
+
+	/// <summary>
+	/// 生成された迷路(外周付き). trueは壁、falseは通路
+	/// </summary>
+	/// <value>The maze data.</value>
 	public bool[,] mazeData{get; private set;}
-	public bool[,] solvedData{get; private set;}
+	/// <summary>
+	/// 正解ルートを格納する配列. ルートはtrue、他はfalse
+	/// </summary>
+	/// <value>The route data.</value>
+	public bool[,] routeData{get; private set;}
+	/// <summary>
+	/// 迷路の縦の高さ（外周を除く）
+	/// </summary>
 	public readonly int height;
+	/// <summary>
+	/// 迷路の横幅（外周を除く）
+	/// </summary>
 	public readonly int width;
+	/// <summary>
+	/// 迷路の生成が完了したか
+	/// </summary>
+	/// <value><c>true</c> if is generated; otherwise, <c>false</c>.</value>
 	public bool isGenerated{get; private set;}
+	/// <summary>
+	/// 経路探索が完了したか
+	/// </summary>
+	/// <value><c>true</c> if is solved; otherwise, <c>false</c>.</value>
 	public bool isSolved{get; private set;}
 
 
+	/// <summary>
+	/// Mazeのコンストラクタ. 外周を除いた迷路の縦横サイズ（ともに奇数に限定）を引数に取る
+	/// </summary>
+	/// <param name="height">Height.</param>
+	/// <param name="width">Width.</param>
 	public Maze(int height=11, int width=11){
 		this.height=height;
 		this.width=width;
 		isGenerated = false;
 		isSolved = false;
 
-		GenerateMaze();
-		//SolveMaze();
+		GenerateMaze(height,width);
+		SolveMaze(new Point(1,1), new Point(height,width));
 	}
+		
 
-
-	void GenerateMaze(){
-		if(width%2!=1 || height%2!=1){
+	//迷路生成
+	void GenerateMaze(int _height, int _width){
+		if(_width%2!=1 || _height%2!=1){
 			Debug.LogError("Height and width must be odd number!");
 			return;
 		}
 		Thread thread = new Thread(()=>{
 			Timer timer = new Timer(); timer.Start();
 
-			MazeGenerator MG = new MazeGenerator(height,width);
-			mazeData = MG.generatedData;
-			if(mazeData.GetLength(0)!=height || mazeData.GetLength(1)!=width)
+			MazeGenerator MG = new MazeGenerator(_height,_width);
+			mazeData = MG.generatedDataWithWall;
+			if(mazeData==null || mazeData.GetLength(0)!=_height+2 || mazeData.GetLength(1)!=_width+2)
 				Debug.LogError("Generate Maze Error!!");
 
 			timer.Stop();
@@ -371,16 +463,17 @@ public class Maze{
 		thread.Start();
 	}
 
-
-	void SolveMaze(Point start, Point goal){
+	//経路探索
+	void SolveMaze(Point start, Point goal, bool useDijkstra=false){
 		Thread thread = new Thread(()=>{
-			while(!isGenerated){}
-
+			while(!isGenerated){
+			}
 			Timer timer = new Timer(); timer.Start();
 
-			MazeSolver MS = new MazeSolver(start,goal,this.mazeData);
-			solvedData = MS.solvedData;
-			if(solvedData.GetLength(0)!=height || solvedData.GetLength(1)!=width)
+			MazeSolver MS = new MazeSolver(start,goal,this.mazeData,useDijkstra);
+			routeData = MS.routeData;
+			Debug.Log("Route lenght: "+MS.routeLength);
+			if(routeData==null || routeData.GetLength(0)!=height+2 || routeData.GetLength(1)!=width+2)
 				Debug.LogError("Solve Maze Error!!");
 
 			timer.Stop();
@@ -390,7 +483,7 @@ public class Maze{
 		thread.Start();
 	}
 
-
+	//計算時間測定用
 	class Timer{
 		System.Diagnostics.Stopwatch stopwatch;
 		public float sec{get{return stopwatch.ElapsedMilliseconds/1000f;}}
@@ -400,12 +493,21 @@ public class Maze{
 		public void Stop(){stopwatch.Stop();}
 	}
 
-
-	public struct Point{
-		public int x{get; private set;}
-		public int y{get; private set;}
+	//二次元座標を扱う構造体。vector2にdownとleftがなかったから作った
+	struct Point{
+		public int x{get; set;}
+		public int y{get; set;}
 		public Point(int x, int y){this.x=x;this.y=y;}
+		public static Point operator+(Point p1, Point p2)	{return new Point(p1.x+p2.x,p1.y+p2.y);}
+		public static Point operator-(Point p1, Point p2)	{return new Point(p1.x-p2.x,p1.y-p2.y);}
+		public static Point up{get{return new Point(0,1);}}
+		public static Point down{get{return new Point(0,-1);}}
+		public static Point right{get{return new Point(1,0);}}
+		public static Point left{get{return new Point(-1,0);}}
 	}
+
+
+
 
 
 
