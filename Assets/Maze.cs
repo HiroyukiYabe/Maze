@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.IO;
 
 
 public class Maze{
@@ -28,6 +29,7 @@ public class Maze{
 			public Wall(Type type, int col, int raw){this.type=type;colPos=col;rawPos=raw;}
 		}
 		List<Wall> uncheckedWall;
+		System.Random rand = new System.Random();
 
 		int height,width;
 		/// <summary>
@@ -77,7 +79,6 @@ public class Maze{
 			ClusterMethod();
 			GetMazeData();
 			ConvertMazeWithWall();
-			//GetMazeWithWall();
 		}
 
 		//クラスター法による迷路生成
@@ -85,6 +86,12 @@ public class Maze{
 			while (uncheckedWall.Count>0) {
 				Wall tmpwall = uncheckedWall.ElementAt(0);
 				uncheckedWall.RemoveAt(0);
+				//壁を壊す確率を操作する
+				if(Probability(tmpwall)<rand.NextDouble()){
+					uncheckedWall.Add(tmpwall);
+					continue;
+				}
+
 				int col = tmpwall.colPos;
 				int raw = tmpwall.rawPos;
 
@@ -190,6 +197,11 @@ public class Maze{
 			}
 		}
 
+		double Probability(Wall wall){
+			return 1;
+			//return (wall.type==Wall.Type.HOLIZONTAL) ?1.0 : 0.3;
+		}
+
 	}
 		
 
@@ -261,6 +273,7 @@ public class Maze{
 
 
 			public ASter(Point start, Point goal, bool[,] mazeData) {
+
 				if(mazeData[start.x,start.y] || mazeData[goal.x,goal.y]){
 					Debug.LogError("Start or Goal is a wall!!");
 					return;
@@ -284,7 +297,9 @@ public class Maze{
 				openNodes.Add(startNode);
 
 				// nextStep の呼び出しを開始する
-				nextStep();
+				ulong count=0;
+				while(!nextStep()){count++;}
+				Debug.Log("Step count:"+count);
 				if(goalNode==null){Debug.LogError("Solving maze failed");	return;}
 
 				//結果処理
@@ -301,7 +316,7 @@ public class Maze{
 			}
 
 			// ダイクストラ法の１ステップを実行する
-			void nextStep(){
+			bool nextStep(){
 				// 未確定ノードの中から、スコアが最小となるノード u を決定する
 				int minScore = int.MaxValue;
 				int minIndex = -1;
@@ -319,7 +334,7 @@ public class Maze{
 
 				// 未確定ノードがなかった場合は終了
 				if (u == null) {
-					return;
+					return true;
 				}
 
 				// ノード u を確定ノードとする
@@ -329,7 +344,7 @@ public class Maze{
 				// ゴールだった場合は終了
 				if (u.pos.Equals(goalPos)) {
 					goalNode = u;
-					return;
+					return true;
 				}
 
 				// ノード u の周りのノードのスコアを更新する
@@ -357,7 +372,7 @@ public class Maze{
 					}
 				}
 
-				nextStep();
+				return false; //nextStep();
 			}
 
 	
@@ -400,12 +415,14 @@ public class Maze{
 	/// 生成された迷路(外周付き). trueは壁、falseは通路
 	/// </summary>
 	/// <value>The maze data.</value>
-	public bool[,] mazeData{get; private set;}
+	public bool[,] mazeData{get{return (bool[,])_mazeData.Clone();}}
+	private bool[,] _mazeData;
 	/// <summary>
 	/// 正解ルートを格納する配列. ルートはtrue、他はfalse
 	/// </summary>
 	/// <value>The route data.</value>
-	public bool[,] routeData{get; private set;}
+	public bool[,] routeData{get{return (bool[,])_routeData.Clone();}}
+	private bool[,] _routeData;
 	/// <summary>
 	/// 迷路の縦の高さ（外周を除く）
 	/// </summary>
@@ -418,12 +435,13 @@ public class Maze{
 	/// 迷路の生成が完了したか
 	/// </summary>
 	/// <value><c>true</c> if is generated; otherwise, <c>false</c>.</value>
-	public bool isGenerated{get; private set;}
+	public bool isGenerated{get{return _mazeData!=null;}}
 	/// <summary>
 	/// 経路探索が完了したか
 	/// </summary>
 	/// <value><c>true</c> if is solved; otherwise, <c>false</c>.</value>
-	public bool isSolved{get; private set;}
+	public bool isSolved{get{return _routeData!=null && !isSolving;}}
+	bool isSolving;
 
 
 	/// <summary>
@@ -435,53 +453,116 @@ public class Maze{
 		this.height=height;
 		this.width=width;
 		isGenerated = false;
-		isSolved = false;
+		isSolving = false;
 
-		GenerateMaze(height,width);
-		SolveMaze(new Point(1,1), new Point(height,width));
+		GenerateMazeAsync(height,width);
+	}
+
+	/// <summary>
+	/// 出力したテキストデータから迷路を再構成する
+	/// </summary>
+	/// <param name="filePath">File path.</param>
+	public Maze(string filePath){
+		isGenerated=false;
+		isSolving=false;
+
+		if(!File.Exists(filePath)){
+			Debug.LogError("File not exist!");
+		}
+
 	}
 		
 
+	/// <summary>
+	/// 迷路を解く. isGenerated=trueでないと動かない
+	/// </summary>
+	public void Solve(){
+		SolveMazeAsync(new Point(1,1), new Point(height,width));
+	}
+		
 	//迷路生成
 	void GenerateMaze(int _height, int _width){
 		if(_width%2!=1 || _height%2!=1){
 			Debug.LogError("Height and width must be odd number!");
 			return;
 		}
+
+		Timer timer = new Timer(); timer.Start();
+		MazeGenerator MG = new MazeGenerator(_height,_width);
+		bool[,] tmp = MG.generatedDataWithWall;
+		if(tmp==null || tmp.GetLength(0)!=_height+2 || tmp.GetLength(1)!=_width+2){
+			Debug.LogError("Generate Maze Error!!");
+			return;
+		}
+		timer.Stop();
+		Debug.Log("Generate Maze:"+timer.sec+"[s]");
+		_mazeData = tmp;
+	}
+
+	//迷路生成（マルチスレッド）
+	void GenerateMazeAsync(int _height, int _width){
+		if(_width%2!=1 || _height%2!=1){
+			Debug.LogError("Height and width must be odd number!");
+			return;
+		}
+
 		Thread thread = new Thread(()=>{
 			Timer timer = new Timer(); timer.Start();
-
 			MazeGenerator MG = new MazeGenerator(_height,_width);
-			mazeData = MG.generatedDataWithWall;
-			if(mazeData==null || mazeData.GetLength(0)!=_height+2 || mazeData.GetLength(1)!=_width+2)
+			bool[,] tmp = MG.generatedDataWithWall;
+			if(tmp==null || tmp.GetLength(0)!=_height+2 || tmp.GetLength(1)!=_width+2){
 				Debug.LogError("Generate Maze Error!!");
-
+				return;
+			}
 			timer.Stop();
 			Debug.Log("Generate Maze:"+timer.sec+"[s]");
-			isGenerated=true;
+			_mazeData = tmp;	
 		});
+		thread.IsBackground = true;
 		thread.Start();
 	}
 
+
 	//経路探索
 	void SolveMaze(Point start, Point goal, bool useDijkstra=false){
+		if(!isGenerated || isSolving)	return;
+		isSolving=true;
+
+		Timer timer = new Timer(); timer.Start();
+		MazeSolver MS = new MazeSolver(start,goal,this._mazeData,useDijkstra);
+		_routeData = MS.routeData;
+		Debug.Log("Route lenght: "+MS.routeLength);
+		if(_routeData==null || _routeData.GetLength(0)!=height+2 || _routeData.GetLength(1)!=width+2)
+			Debug.LogError("Solve Maze Error!!");
+			
+		timer.Stop();
+		Debug.Log("Solve Maze:"+timer.sec+"[s]");
+		isSolving = false;
+	}
+
+
+	//経路探索（マルチスレッド）
+	void SolveMazeAsync(Point start, Point goal, bool useDijkstra=false){
+		if(!isGenerated || isSolving)	return;
+		isSolving=true;
+
 		Thread thread = new Thread(()=>{
-			while(!isGenerated){
-			}
 			Timer timer = new Timer(); timer.Start();
 
-			MazeSolver MS = new MazeSolver(start,goal,this.mazeData,useDijkstra);
-			routeData = MS.routeData;
+			MazeSolver MS = new MazeSolver(start,goal,this._mazeData,useDijkstra);
+			_routeData = MS.routeData;
 			Debug.Log("Route lenght: "+MS.routeLength);
-			if(routeData==null || routeData.GetLength(0)!=height+2 || routeData.GetLength(1)!=width+2)
+			if(_routeData==null || _routeData.GetLength(0)!=height+2 || _routeData.GetLength(1)!=width+2)
 				Debug.LogError("Solve Maze Error!!");
 
 			timer.Stop();
 			Debug.Log("Solve Maze:"+timer.sec+"[s]");
-			isSolved=true;
+			isSolving = false;
 		});
+		thread.IsBackground = true;
 		thread.Start();
 	}
+
 
 	//計算時間測定用
 	class Timer{
@@ -493,8 +574,9 @@ public class Maze{
 		public void Stop(){stopwatch.Stop();}
 	}
 
+
 	//二次元座標を扱う構造体。vector2にdownとleftがなかったから作った
-	struct Point{
+	public struct Point{
 		public int x{get; set;}
 		public int y{get; set;}
 		public Point(int x, int y){this.x=x;this.y=y;}
@@ -505,11 +587,6 @@ public class Maze{
 		public static Point right{get{return new Point(1,0);}}
 		public static Point left{get{return new Point(-1,0);}}
 	}
-
-
-
-
-
 
 
 
