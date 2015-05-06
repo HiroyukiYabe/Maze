@@ -1,4 +1,4 @@
-﻿//#define MY_DEBUG
+﻿#define MY_DEBUG
 
 using UnityEngine;
 using System;
@@ -233,6 +233,36 @@ public class Maze{
 			this._routeLengthData=aster.routeLengthData;
 			this.routeLength = aster.routeLenght;
 		}
+
+		public static bool SolveMinimum(Point start, Point goal, bool[,] mazeData, 
+			out bool[,] routeData, out int[,] routeLengthData, out int routeLength){
+			ASter aster = new ASter(start,goal,mazeData);
+			if(!aster.isSolved){
+				routeData = null;
+				routeLengthData = null;
+				routeLength = -1;
+				return false;
+			}
+			routeData = aster.routeData;
+			routeLengthData=aster.routeLengthData;
+			routeLength = aster.routeLenght;
+			return true;
+		}
+
+		public static bool SearchAll(Point start, Point? goal, bool[,] mazeData, 
+			out bool[,] routeData, out int[,] routeLengthData, out int maxLength){
+			SearchWholeMaze swm = new SearchWholeMaze(start,goal,mazeData);
+			if(swm.routeLengthData==null){
+				routeData = null;
+				routeLengthData = null;
+				maxLength = -1;
+				return false;
+			}
+			routeData = swm.routeData;
+			routeLengthData = swm.routeLengthData;
+			maxLength = swm.maxLenght;
+			return true;
+		}
 			
 
 
@@ -280,6 +310,11 @@ public class Maze{
 			/// </summary>
 			/// <value>The length of the route.</value>
 			public int routeLenght{get{return goalNode==null ? -1 : goalNode.gs;}}
+			/// <summary>
+			/// 探索が成功したか
+			/// </summary>
+			/// <value><c>true</c> if is solved; otherwise, <c>false</c>.</value>
+			public bool isSolved{get{return goalNode!=null;}}
 
 
 			public ASter(Point start, Point goal, bool[,] mazeData) {
@@ -325,15 +360,15 @@ public class Maze{
 				Node tmp = this.goalNode;
 				while(tmp!=null){
 					tmp.isRoute=true;
-					//routeData[tmp.pos.x,tmp.pos.y]=true;
-					//routeLengthData[tmp.pos.x,tmp.pos.y]=tmp.gs;
+					routeData[tmp.pos.x,tmp.pos.y]=true;
+					routeLengthData[tmp.pos.x,tmp.pos.y]=tmp.gs;
 					tmp=tmp.prev;
 				}
-				foreach (var node in mazeNodes) {
-					Point pos = node.pos;
-					this.routeData[pos.x,pos.y]=node.isRoute;
-					this.routeLengthData[pos.x,pos.y]=node.gs;
-				}
+//				foreach (var node in mazeNodes) {
+//					Point pos = node.pos;
+//					this.routeData[pos.x,pos.y]=node.isRoute;
+//					this.routeLengthData[pos.x,pos.y]=node.gs;
+//				}
 
 			}
 
@@ -417,6 +452,176 @@ public class Maze{
 		}
 			
 
+
+		//迷路を全探索するクラス
+		class SearchWholeMaze{
+
+			protected class Node{
+				//public int fs;           // ノードの f* の値
+				public int gs;           // ノードの g* の値
+				public bool done;        // ダイクストラ法の確定ノード一覧
+				public Node prev;        // ダイクストラ法の直前の頂点を記録
+				public bool isWall;      // 壁かどうか
+				public bool isRoute;     // スタートからゴールへのルート上の点かどうか
+				public Point pos;        // マスの 位置
+
+				public Node(Point pos,bool isWall){
+					this.pos=pos;
+					this.isWall=isWall;
+					//fs=int.MaxValue;
+					gs=int.MaxValue;
+					prev=null;
+					isRoute=false;
+				}
+			}
+			Node[,] mazeNodes;							// 迷路を格納した配列
+			List<Node> openNodes = new List<Node>();	// 探索中のノード一覧
+			Node goalNode;             				    // ゴールの場所
+			Point? goalPos;								//ゴールの位置
+			readonly int H;                      		// 迷路の縦幅
+			readonly int W;                      		// 迷路の横幅
+			Point[] nearPoint = {Point.up,Point.down,Point.right,Point.left};
+
+			/// <summary>
+			/// 正解ルートを格納する配列. ルートはtrue、他はfalse
+			/// </summary>
+			/// <value>The route data.</value>
+			public bool[,] routeData{get; private set;}
+			/// <summary>
+			/// 正解ルートのスタートからの長さを格納する配列
+			/// </summary>
+			/// <value>The route length data.</value>
+			public int[,] routeLengthData{get; private set;}
+			/// <summary>
+			/// スタートからの最長距離. 
+			/// </summary>
+			/// <value>The length of the route.</value>
+			public int maxLenght{get; private set;}
+			/// <summary>
+			/// ゴールに到達したか
+			/// </summary>
+			/// <value><c>true</c> if is solved; otherwise, <c>false</c>.</value>
+			public bool isSolved{get{return goalNode!=null;}}
+
+
+			public SearchWholeMaze(Point start, Point? goal, bool[,] mazeData) {
+
+				if(mazeData[start.x,start.y]){
+					Debug.LogError("Start is a wall!!");
+					return;
+				}
+
+				this.H = mazeData.GetLength(0);
+				this.W = mazeData.GetLength(1);
+				mazeNodes = new Node[H,W];
+				for(int i=0; i<H; i++){
+					for (int j=0; j<W; j++) {
+						mazeNodes[i,j] = new Node(new Point(i,j),mazeData[i,j]);
+					}
+				}
+				this.goalPos=goal;
+
+				// スタート地点のみ gs を 0 とし、openNodes に加える
+				Node startNode = mazeNodes[start.x,start.y];
+				startNode.gs = 0;
+				//startNode.fs = startNode.gs + hs(startNode);
+				openNodes.Add(startNode);
+
+				// nextStep の呼び出しを開始する
+				#if MY_DEBUG				
+				uint count=0;
+				#endif
+				while(!nextStep()){
+					#if MY_DEBUG				
+					count++;
+					#endif
+				}
+				#if MY_DEBUG
+				Debug.Log("Step count:"+count);
+				#endif
+				//if(goalNode==null){Debug.LogError("Solving maze failed");	return;}
+
+				//結果処理
+				this.routeData = new bool[H,W];
+				this.routeLengthData = new int[H,W];
+				Node tmp = this.goalNode;
+				while(tmp!=null){
+					tmp.isRoute=true;
+					//routeData[tmp.pos.x,tmp.pos.y]=true;
+					//routeLengthData[tmp.pos.x,tmp.pos.y]=tmp.gs;
+					tmp=tmp.prev;
+				}
+				foreach (var node in mazeNodes) {
+					Point pos = node.pos;
+					this.routeData[pos.x,pos.y]=node.isRoute;
+					this.routeLengthData[pos.x,pos.y]=node.gs;
+					if(node.gs!=int.MaxValue && this.maxLenght<node.gs)	this.maxLenght=node.gs;
+				}
+
+			}
+
+			// ダイクストラ法の１ステップを実行する
+			bool nextStep(){
+				// 未確定ノードの中から、スコアが最小となるノード u を決定する
+				int minScore = int.MaxValue;
+				int minIndex = -1;
+				Node u = null;
+				for (int i = 0; i < openNodes.Count; i++) {
+					Node block = openNodes[i];
+					//未確定ノードの中に確定ノードがある？
+					if (block.done){Debug.LogWarning("確定ノード再チェック"); continue;}
+					if (block.gs < minScore) {
+						minScore = block.gs;
+						minIndex = i;
+						u = block;
+					}
+				}
+
+				// 未確定ノードがなかった場合は終了
+				if (u == null) {
+					return true;
+				}
+
+				// ノード u を確定ノードとする
+				openNodes.RemoveAt(minIndex);
+				u.done = true;
+
+				// ゴールだった場合
+				if (goalPos!=null && u.pos.Equals(goalPos)) 
+					goalNode = u;
+
+				// ノード u の周りのノードのスコアを更新する
+				for(int i=0; i<nearPoint.Length; i++){
+					Point next = u.pos + nearPoint[i];
+					// 境界チェック
+					if (next.x<0 || next.x>=H || next.y<0 || next.y>=W) continue;
+					// ノード v を取得する
+					Node v = mazeNodes[next.x,next.y];
+
+					// 確定ノードや壁だったときにはパスする
+					//確定ノードのスコア更新はないか？
+					if (v.done || v.isWall) {
+						if(v.done && u.gs + 1 < v.gs)	Debug.LogWarning("確定ノードのスコア更新");
+						continue;
+					}
+
+					// 既存のスコアより小さいときのみ更新する
+					if (u.gs + 1 < v.gs) {
+						v.gs = u.gs + 1;
+						v.prev = u;
+						// open リストに追加
+						if (!openNodes.Contains(v)) openNodes.Add(v);
+					}
+				}
+
+				return false;
+			}
+
+		}
+
+
+
+
 //		class RouteNode{
 //			public int lengthFromStart;
 //			public Vector2 nextDir;
@@ -437,8 +642,8 @@ public class Maze{
 	/// 生成された迷路(外周付き). trueは壁、falseは通路
 	/// </summary>
 	/// <value>The maze data.</value>
-	public bool[,] mazeData{get{return isGenerated ? (bool[,])_mazeData.Clone() : null;}}
-	private bool[,] _mazeData;
+	public bool[,] wallData{get{return isGenerated ? (bool[,])_wallData.Clone() : null;}}
+	private bool[,] _wallData;
 	/// <summary>
 	/// 正解ルートを格納する配列. ルートはtrue、他はfalse
 	/// </summary>
@@ -455,7 +660,8 @@ public class Maze{
 	/// 正解ルートの長さ. 失敗時-1
 	/// </summary>
 	/// <value>The length of the route.</value>
-	public int routeLength{get; private set;}
+	public int routeLength{get{return _routeLength;}}
+	private int _routeLength;
 	/// <summary>
 	/// 迷路の縦の高さ（外周を除く）
 	/// </summary>
@@ -468,7 +674,7 @@ public class Maze{
 	/// 迷路の生成が完了したか
 	/// </summary>
 	/// <value><c>true</c> if is generated; otherwise, <c>false</c>.</value>
-	public bool isGenerated{get{return _mazeData!=null;}}
+	public bool isGenerated{get{return _wallData!=null;}}
 	/// <summary>
 	/// 経路探索が成功したか
 	/// </summary>
@@ -487,7 +693,8 @@ public class Maze{
 		this.height=height;
 		this.width=width;
 		GenerateMaze(height,width);
-		SolveMaze(new Point(1,1), new Point(height,width));
+		SolveMinimum(new Point(1,1), new Point(height,width));
+		//SearchAll(new Point(1,1), new Point(height,width));
 	}
 
 	/// <summary>
@@ -523,9 +730,17 @@ public class Maze{
 	/// 迷路を解く. isGenerated=trueでないと動かない
 	/// </summary>
 	public bool Solve(Point start, Point goal){
-		return SolveMaze(start, goal);
+		return SolveMinimum(start, goal);
 	}
 		
+	/// <summary>
+	/// 迷路のスタートからの距離を全探索する. isGenerated=trueでないと動かない
+	/// </summary>
+	/// <param name="start">Start.</param>
+	/// <param name="goal">Goal.</param>
+	public bool Search(Point start, Point? goal=null){
+		return SearchAll(start, goal);
+	}
 
 
 	//迷路生成
@@ -547,7 +762,7 @@ public class Maze{
 		timer.Stop();
 		Debug.Log("Generate Maze:"+timer.sec+"[s]");
 		#endif
-		_mazeData = tmp;
+		_wallData = tmp;
 	}
 
 	//迷路生成（マルチスレッド）
@@ -580,22 +795,15 @@ public class Maze{
 	/// <returns><c>true</c>, if maze was solved, <c>false</c> otherwise.</returns>
 	/// <param name="start">Start.</param>
 	/// <param name="goal">Goal.</param>
-	/// <param name="useDijkstra">If set to <c>true</c> use dijkstra.</param>
-	bool SolveMaze(Point start, Point goal, bool useDijkstra=false){
+	bool SolveMinimum(Point start, Point goal){
 		if(!isGenerated)	return false;
 		#if MY_DEBUG
 		Timer timer = new Timer(); timer.Start();
 		#endif
-		_routeData = null;
-		MazeSolver MS = new MazeSolver(start,goal,this._mazeData,useDijkstra);
-		bool[,] tmp = MS.routeData;
-		if(tmp==null || tmp.GetLength(0)!=height+2 || tmp.GetLength(1)!=width+2){
+		if(!MazeSolver.SolveMinimum(start,goal,this._wallData,out this._routeData,out this._routeLengthData,out this._routeLength)){
 			Debug.LogError("Solve Maze Error!!");
 			return false;
 		}
-		this._routeData = tmp;
-		this._routeLengthData = MS.routeLengthData;
-		this.routeLength = MS.routeLength;
 		#if MY_DEBUG
 		Debug.Log("Route lenght: "+this.routeLength);
 		timer.Stop();Debug.Log("Solve Maze:"+timer.msec+"[msec]");
@@ -605,27 +813,50 @@ public class Maze{
 	}
 
 
-//	bool SolveMaze(Point start, Point goal, bool useDijkstra=false){
-//		if(!isGenerated || isSolving)	return false;
-//		isSolving=true;
-//		_routeData = null;
-//
-//		Timer timer = new Timer(); timer.Start();
-//		MazeSolver MS = new MazeSolver(start,goal,this._mazeData,useDijkstra);
-//		bool[,] tmp = MS.routeData;
-//		if(tmp==null || tmp.GetLength(0)!=height+2 || tmp.GetLength(1)!=width+2){
-//			Debug.LogError("Solve Maze Error!!");
-//			isSolving=false;
-//			return false;
-//		}
-//		timer.Stop();
-//		Debug.Log("Solve Maze:"+timer.sec+"[s]");
-//
-//		Debug.Log("Route lenght: "+MS.routeLength);
-//		_routeData = tmp;
-//		isSolving = false;
-//		return true;
-//	}
+	/// <summary>
+	/// スタートからの距離を全探索. true=成功、false=失敗
+	/// </summary>
+	/// <returns><c>true</c>, if all was searched, <c>false</c> otherwise.</returns>
+	/// <param name="start">Start.</param>
+	/// <param name="goal">Goal.</param>
+	bool SearchAll(Point start, Point? goal){
+		if(!isGenerated)	return false;
+		#if MY_DEBUG
+		Timer timer = new Timer(); timer.Start();
+		#endif
+		if(!MazeSolver.SearchAll(start,goal,this._wallData,out this._routeData,out this._routeLengthData,out this._routeLength)){
+			Debug.LogError("Search whole maze Error!!");
+			return false;
+		}
+		#if MY_DEBUG
+		Debug.Log("Route lenght: "+this.routeLength);
+		timer.Stop();Debug.Log("Search whole maze:"+timer.msec+"[msec]");
+		#endif
+
+		return true;
+	}
+		
+
+	bool SolveMinimum2(Point start, Point goal){
+		if(!isGenerated)	return false;
+		#if MY_DEBUG
+		Timer timer = new Timer(); timer.Start();
+		#endif
+		MazeSolver MS = new MazeSolver(start,goal,this._wallData);
+		this._routeData=MS.routeData;
+		this._routeLengthData=MS.routeLengthData;
+		this._routeLength=MS.routeLength;
+		if(this._routeData==null){
+			Debug.LogError("Solve Maze Error!!");
+			return false;
+		}
+		#if MY_DEBUG
+		Debug.Log("Route lenght: "+this.routeLength);
+		timer.Stop();Debug.Log("Solve Maze:"+timer.msec+"[msec]");
+		#endif
+
+		return true;
+	}
 
 
 	//経路探索（マルチスレッド）

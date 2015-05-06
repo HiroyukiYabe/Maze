@@ -2,8 +2,8 @@
   <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
   <MonoDevelop.Ide.Workbench ActiveDocument="Assets/MazeManager.cs">
     <Files>
-      <File FileName="Assets/Maze.cs" Line="462" Column="17" />
-      <File FileName="Assets/MazeManager.cs" Line="101" Column="2" />
+      <File FileName="Assets/Maze.cs" Line="679" Column="16" />
+      <File FileName="Assets/MazeManager.cs" Line="99" Column="5" />
     </Files>
   </MonoDevelop.Ide.Workbench>
   <MonoDevelop.Ide.DebuggingService.Breakpoints>

@@ -62,8 +62,6 @@ public class MazeManager : MonoBehaviour {
 			if(height%2==1&&width%2==1){
 				Debug.Log("generate maze");
 				StartCoroutine(CreateMaze());
-//				Camera.main.transform.position=new Vector3((height+1)/2,Mathf.Max(height,width)*1.3f,(width+1)/2);
-//				Camera.main.transform.rotation = Quaternion.LookRotation(Vector3.down);
 			}
 		}
 		else{
@@ -77,28 +75,13 @@ public class MazeManager : MonoBehaviour {
 			maze = null;
 		}
 	}
-
-//	IEnumerator	 CreateMaze(Maze maze){
-//		while(!maze.isGenerated){yield return null;}
-//		bool[,] data = maze.mazeData;
-//		int count =0;
-//
-//		for(int i=0; i<data.GetLength(0); i++){
-//			for(int j=0; j<data.GetLength(1); j++){
-//				if(data[i,j])
-//					((GameObject)Instantiate(wallBlock, new Vector3(i,0.5f,j), Quaternion.identity)).transform.SetParent(mazeParent);
-//				((GameObject)Instantiate(floorBlock, new Vector3(i,0,j), Quaternion.identity)).transform.SetParent(mazeParent);
-//			
-//				if(++count>invokeStep){count=0;yield return null;}
-//			}
-//		}
-//		player = (GameObject)Instantiate(ball,new Vector3(1,1,1),Quaternion.identity);
-//	}
+		
 
 	IEnumerator	 CreateMaze(){
 		maze = new Maze(width,height);
-		bool[,] data = maze.mazeData;
+		bool[,] data = maze.wallData;
 		bool[,] route = maze.routeData;
+		int[,] length = maze.routeLengthData;
 		int H = data.GetLength(0);
 		int W = data.GetLength(1);
 		mazeField = new GameObject[H,W];
@@ -111,7 +94,10 @@ public class MazeManager : MonoBehaviour {
 					(GameObject)Instantiate(floorBlock, new Vector3(i,0,j), Quaternion.identity);
 				obj.transform.SetParent(mazeParent);
 				mazeField[i,j] = obj;
-				if(route[i,j])	obj.GetComponent<Renderer>().material.color = new Color(1f,0f,0f,1f);
+				if(!data[i,j]){
+					float param = length[i,j]/(float)maze.routeLength;
+					obj.GetComponent<Renderer>().material.color = new Color(1-Mathf.Abs(param-0.5f)*2,1-param,param,1f);
+				}
 
 //				if(data[i,j])
 //					((GameObject)Instantiate(wallBlock, new Vector3(i,0.5f,j), Quaternion.identity)).transform.SetParent(mazeParent);
@@ -127,15 +113,21 @@ public class MazeManager : MonoBehaviour {
 		playerRB = player.GetComponent<Rigidbody>();
 	}
 
+
 	void UpdateRoute(Vector3 playerPos){
 		Maze.Point start = new Maze.Point((int)Math.Round(playerPos.x),(int)Math.Round(playerPos.z));
 		Maze.Point goal = new Maze.Point(maze.height,maze.width);
-		if(maze.Solve(start,goal)){
+		if(maze.Search(start,null)){
+			bool[,] data = maze.wallData;
 			bool[,] route = maze.routeData;
+			int[,] length = maze.routeLengthData;
 			for(int i=0; i<route.GetLength(0); i++){
 				for(int j=0; j<route.GetLength(1); j++){
-					if(route[i,j]) mazeField[i,j].GetComponent<Renderer>().material.color = new Color(1f,0f,0f,1f);
-					else mazeField[i,j].GetComponent<Renderer>().material.color = new Color(1f,1f,1f,1f);
+					if(!data[i,j]){
+						float param = length[i,j]/(float)maze.routeLength;
+						mazeField[i,j].GetComponent<Renderer>().material.color = new Color(1-Mathf.Abs(param-0.5f)*2,1-param,param,1f);
+					}
+					//else mazeField[i,j].GetComponent<Renderer>().material.color = new Color(1f,1f,1f,1f);
 				}
 			}
 		}
